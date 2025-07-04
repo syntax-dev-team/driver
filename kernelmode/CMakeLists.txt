@@ -14,7 +14,7 @@ wdk_add_driver(
 	main.cpp
 )
 
-target_compile_options(your_target PRIVATE "/GS-")
+target_compile_options(syntaxdriver PRIVATE "/GS-")
 
 
 # settings language standard

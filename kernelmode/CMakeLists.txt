@@ -14,12 +14,14 @@ wdk_add_driver(
 	main.cpp
 )
 
-add_compile_options()
+target_compile_options(your_target PRIVATE "/GS-")
+
 
 # settings language standard
 set_target_properties(syntaxdriver PROPERTIES
     CXX_STANDARD 20
     LINK_FLAGS "/ENTRY:DriverEntry"
 )
+
 
 

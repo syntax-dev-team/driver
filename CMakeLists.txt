@@ -35,4 +35,4 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Include sub-projects.
 add_subdirectory("kernelmode")
-add_subdirectory ("usermode")
+add_subdirectory ("usermode_demo")

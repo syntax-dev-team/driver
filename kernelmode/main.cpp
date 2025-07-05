@@ -15,19 +15,21 @@ void D_DbgPrint(PCSTR text) {
 
 namespace driver {
 	namespace codes {
-		// Setup Driver
-		constexpr ULONG attach = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x696, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+		// Attaches driver to target process
+		constexpr ULONG attach = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x800, METHOD_BUFFERED, FILE_SPECIAL_ACCESS); // all CTL_CODE codes under 0x800 are reserved for windows 
 		// Read Memory
-		constexpr ULONG read = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x697, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+		constexpr ULONG read = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x801, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
 		// Write Memory
-		constexpr ULONG write = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x698, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+		constexpr ULONG write = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x802, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
+
+		constexpr ULONG write_ignore_read = CTL_CODE(FILE_DEVICE_UNKNOWN, 0x803, METHOD_BUFFERED, FILE_SPECIAL_ACCESS);
 	}
 
 	// Request (structure shared between usermode and kernel)
 	struct Request {
 		HANDLE process_id;
 
-		PVOID target;
+		PVOID target_address;
 		PVOID buffer;
 
 		SIZE_T size;
@@ -56,9 +58,9 @@ namespace driver {
 		// Gets the location of the Irps stack location. (IRP has its own stack)
 		PIO_STACK_LOCATION stack_irp = IoGetCurrentIrpStackLocation(irp);
 		//Access request object sent from usermode by accessing the buffer, associatedIrp.SystemBuffer and casting that into our request object;
-		auto request = reinterpret_cast<Request*>(irp->AssociatedIrp.SystemBuffer);
+		auto request_object = reinterpret_cast<Request*>(irp->AssociatedIrp.SystemBuffer);
 		
-		if (stack_irp == nullptr && request == nullptr) {
+		if (stack_irp == nullptr && request_object == nullptr) {
 			IoCompleteRequest(irp, IO_NO_INCREMENT);
 			return status;
 		}
@@ -66,9 +68,39 @@ namespace driver {
 		static PEPROCESS target_process = nullptr;
 
 		const ULONG control_code = stack_irp->Parameters.DeviceIoControl.IoControlCode;
+		switch (control_code)
+		{
+		case codes::attach:
+			status = PsLookupProcessByProcessId(request_object->process_id, &target_process);
+			break;
 
+		case codes::read:
+			if (target_process != nullptr) {
+				status = MmCopyVirtualMemory(target_process, request_object->buffer,
+											 PsGetCurrentProcess(), request_object->target_address,
+											 request_object->size, KernelMode, &request_object->returnsize
+										    );
+			}
+			break;
+		case codes::write:
+			if (target_process != nullptr) {
+				status = MmCopyVirtualMemory(target_process, request_object->target_address,
+					PsGetCurrentProcess(), request_object->buffer,
+					request_object->size, KernelMode, &request_object->returnsize
+				);
+			}
+			break;
+		case codes::write_ignore_read:
+
+			break;
+		default:
+			break;
+		}
+
+		irp->IoStatus.Status = status;
+		irp->IoStatus.Information = sizeof(Request);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);
-		return irp->IoStatus.Status;
+		return status;
 	}
 }
 

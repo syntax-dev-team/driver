@@ -1,6 +1,22 @@
-﻿#include<iostream>
+﻿/* DEMO FOR KERNEL DRIVER (INCLUDES CSGO BUNNY HOP)*/
+#define CSGO_CHEAT
+
+
+#include<iostream>
 #include<Windows.h>
 #include<TlHelp32.h>
+
+#include "csgo_offsets/client_dll.hpp"
+#include "csgo_offsets/offsets.hpp"
+#include "csgo_offsets/buttons.hpp"
+using namespace cs2_dumper;
+
+#ifdef CSGO_CHEAT
+    #define PROCESSNAME L"cs2.exe"
+#else
+    #define PROCESSNAME L"notepad.exe"
+#endif // 
+
 
 //define some helper functions
 uintptr_t get_module_base_address(DWORD procId, const wchar_t* modName);
@@ -57,7 +73,7 @@ namespace driver {
 int main()
 {
 	std::cout << "PO COOL DRIVER\n";
-    const wchar_t* procname = L"notepad.exe";
+    const wchar_t* procname = PROCESSNAME;
     const DWORD pid = get_pid(procname);
     if (!pid) {
         wprintf(L"failed to find: %ls\n", procname);
@@ -66,7 +82,7 @@ int main()
     }
 
     //opens a handle to the driver
-    const HANDLE driver_handle = CreateFileW(L"\\\\.\\\BigBallsDriver", GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    const HANDLE driver_handle = CreateFileW(L"\\\\.\\BigBallsDriver", GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
     if (driver_handle == INVALID_HANDLE_VALUE) {
         printf("could not create a driver handle\n");
@@ -74,6 +90,45 @@ int main()
     }
     if (driver::attach_to_process(driver_handle, pid) == true) {
         printf("attached to process succcesfully\n");
+#ifdef CSGO_CHEAT
+        if (const uintptr_t client = get_module_base_address(pid, L"client.dll"); client != 0) {
+            printf("client.dll found\n");
+            while (true) {
+                if (GetAsyncKeyState(VK_END))
+                    break;
+
+                uintptr_t localplayerpawn = 0;
+                driver::read_memory(driver_handle, client + offsets::client_dll::dwLocalPlayerPawn, &localplayerpawn, sizeof(uintptr_t));
+
+                if (localplayerpawn == 0)
+                    continue;
+
+                UINT32 flags = 0;
+                driver::read_memory(driver_handle, localplayerpawn + schemas::client_dll::C_BaseEntity::m_fFlags, &flags, sizeof(UINT32));
+
+                const bool in_air = flags & (1 << 0);
+                const bool space_pressed = GetAsyncKeyState(VK_SPACE);
+                DWORD force_jump;
+                driver::read_memory(driver_handle, localplayerpawn + buttons::jump, &force_jump, sizeof(DWORD));
+
+                int random_ass_number = 65537;
+                int random_ass_number2 = 256;
+                if (space_pressed && in_air) {
+                    Sleep(5);
+                    driver::write_memory(driver_handle, client + buttons::jump, &random_ass_number,sizeof(int));
+                }
+                else if (space_pressed && !in_air) {
+                    driver::write_memory(driver_handle, client + buttons::jump, &random_ass_number2, sizeof(int));
+                }
+                else if (!space_pressed && force_jump == random_ass_number) {
+                    driver::write_memory(driver_handle, client + buttons::jump, &random_ass_number2, sizeof(int));
+                }
+            }
+        }
+        else {
+            printf("client.dll not found\n");
+        }
+#endif
     }
 
     CloseHandle(driver_handle);

@@ -12,24 +12,18 @@ endif()
 
 project ("syntax_open_source_driver")
 
-# sort out build configurations
-foreach(OUTPUTCONFIG rebug release relwithdebinfo minsizerel)
-    string(TOUPPER "${OUTPUTCONFIG}" OUTPUTCONFIG_UPPER)
-
-
-    if (NOT DEFINED ARCHITECTURE)
-        if (CMAKE_SIZEOF_VOID_P GREATER 4)
-            set(ARCHITECTURE x64)
-        else()
-            set(ARCHITECTURE x32)
-        endif()
+# set architecture
+if (NOT DEFINED ARCHITECTURE)
+    if (CMAKE_SIZEOF_VOID_P GREATER 4)
+        set(ARCHITECTURE x64)
+    else()
+        set(ARCHITECTURE x32)
     endif()
-    
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG_UPPER} "${CMAKE_SOURCE_DIR}/bin/${OUTPUTCONFIG}_${ARCHITECTURE}")
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG_UPPER} "${CMAKE_SOURCE_DIR}/bin/${OUTPUTCONFIG}_${ARCHITECTURE}")
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG_UPPER} "${CMAKE_SOURCE_DIR}/lib/${OUTPUTCONFIG}_${ARCHITECTURE}")
-endforeach()
+endif()
 
+# order cmake build types and architectures
+string(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE_LOWER}_${ARCHITECTURE}")
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 

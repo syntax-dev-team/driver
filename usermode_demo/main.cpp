@@ -1,5 +1,5 @@
 ﻿/* DEMO FOR KERNEL DRIVER (INCLUDES CSGO BUNNY HOP)*/
-//#define CSGO_CHEAT
+#define CSGO_CHEAT
 
 
 #include<iostream>
@@ -123,18 +123,18 @@ int main()
                 if (localplayerpawn == 0)
                     continue;
 
-                UINT32 flags = 0;
+                UINT32 flags;
                 driver::read_memory(driver_handle, localplayerpawn + schemas::client_dll::C_BaseEntity::m_fFlags, &flags, sizeof(UINT32));
 
                 const bool in_air = flags & (1 << 0);
                 const bool space_pressed = GetAsyncKeyState(VK_SPACE);
                 DWORD force_jump;
-                driver::read_memory(driver_handle, localplayerpawn + buttons::jump, &force_jump, sizeof(DWORD));
+                driver::read_memory(driver_handle, client + buttons::jump, &force_jump, sizeof(DWORD));
                 
                 int random_ass_number = 65537;
                 int random_ass_number2 = 256;
                 if (space_pressed && in_air) {
-                    Sleep(5);
+                    Sleep(10);
                     driver::write_memory(driver_handle, client + buttons::jump, &random_ass_number,sizeof(int));
                 }
                 else if (space_pressed && !in_air) {

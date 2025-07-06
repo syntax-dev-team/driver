@@ -77,16 +77,16 @@ namespace driver {
 
 		case codes::read:
 			if (target_process != nullptr) { // MmCopyVirtualmemomry requires 2 EPROCESS structures, the target PROCESS and the source PROCESS (kernel driver) to write memory to
-				status = MmCopyVirtualMemory(target_process, request_object->buffer,
-											 PsGetCurrentProcess(), request_object->target_address,
+				status = MmCopyVirtualMemory(target_process, request_object->target_address,
+											 PsGetCurrentProcess(), request_object->buffer ,
 											 request_object->size, KernelMode, &request_object->returnsize
 										    );
 			}
 			break;
 		case codes::write:
 			if (target_process != nullptr) {
-				status = MmCopyVirtualMemory(PsGetCurrentProcess(), request_object->target_address,
-					target_process, request_object->buffer,
+				status = MmCopyVirtualMemory(PsGetCurrentProcess(), request_object->buffer,
+					target_process, request_object->target_address,
 					request_object->size, KernelMode, &request_object->returnsize
 				);
 			}

@@ -1,5 +1,5 @@
 ﻿/* DEMO FOR KERNEL DRIVER (INCLUDES CSGO BUNNY HOP)*/
-#define CSGO_CHEAT
+//#define CSGO_CHEAT
 
 
 #include<iostream>
@@ -15,8 +15,27 @@ using namespace cs2_dumper;
     #define PROCESSNAME L"cs2.exe"
 #else
     #define PROCESSNAME L"notepad.exe"
-#endif // 
+#endif 
 
+
+void PrintModuleNames(DWORD dwProcessId)
+{
+    MODULEENTRY32 lpModuleEntry = { 0 };
+    HANDLE hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, dwProcessId);
+    if (!hSnapShot)	return;
+
+    lpModuleEntry.dwSize = sizeof(lpModuleEntry);
+    BOOL bModule = Module32First(hSnapShot, &lpModuleEntry);
+
+    while (bModule)
+    {
+        std::printf("Current Module: %s\n", lpModuleEntry.szModule);
+
+        bModule = Module32Next(hSnapShot, &lpModuleEntry);
+    }
+
+    CloseHandle(hSnapShot);
+}
 
 //define some helper functions
 uintptr_t get_module_base_address(DWORD procId, const wchar_t* modName);
@@ -91,6 +110,8 @@ int main()
     if (driver::attach_to_process(driver_handle, pid) == true) {
         printf("attached to process succcesfully\n");
 #ifdef CSGO_CHEAT
+
+
         if (const uintptr_t client = get_module_base_address(pid, L"client.dll"); client != 0) {
             printf("client.dll found\n");
             while (true) {
@@ -99,7 +120,6 @@ int main()
 
                 uintptr_t localplayerpawn = 0;
                 driver::read_memory(driver_handle, client + offsets::client_dll::dwLocalPlayerPawn, &localplayerpawn, sizeof(uintptr_t));
-
                 if (localplayerpawn == 0)
                     continue;
 
@@ -110,7 +130,7 @@ int main()
                 const bool space_pressed = GetAsyncKeyState(VK_SPACE);
                 DWORD force_jump;
                 driver::read_memory(driver_handle, localplayerpawn + buttons::jump, &force_jump, sizeof(DWORD));
-
+                
                 int random_ass_number = 65537;
                 int random_ass_number2 = 256;
                 if (space_pressed && in_air) {
@@ -127,6 +147,13 @@ int main()
         }
         else {
             printf("client.dll not found\n");
+        }
+
+#else
+        if (const uintptr_t client = get_module_base_address(pid, L"Notepad.exe"); client != 0) {
+            UINT32 randombytes = 0;
+            driver::write_memory(driver_handle, client + 0x129050, &randombytes, sizeof(UINT32));
+            std::cout << "randomm bytes read:" << randombytes << '\n';
         }
 #endif
     }
@@ -158,24 +185,26 @@ DWORD get_pid(const wchar_t* procname)
     CloseHandle(hsnap);
     return procId;
 }
+
+
 uintptr_t get_module_base_address(DWORD procId, const wchar_t* modName)
 {
     uintptr_t modBaseAddr = 0;
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, procId);
     if (hSnap != INVALID_HANDLE_VALUE)
     {
-        MODULEENTRY32 modEntry;
+        MODULEENTRY32W modEntry;
         modEntry.dwSize = sizeof(modEntry);
-        if (Module32First(hSnap, &modEntry))
+        if (Module32FirstW(hSnap, &modEntry))
         {
             do
             {
-                if (!_wcsicmp((wchar_t*)modEntry.szModule, modName))
+                if (!_wcsicmp(modEntry.szModule, modName))
                 {
                     modBaseAddr = (uintptr_t)modEntry.modBaseAddr;
                     break;
                 }
-            } while (Module32Next(hSnap, &modEntry));
+            } while (Module32NextW(hSnap, &modEntry));
         }
     }
     CloseHandle(hSnap);

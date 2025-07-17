@@ -20,6 +20,7 @@ using namespace cs2_dumper;
 
 void PrintModuleNames(DWORD dwProcessId)
 {
+    
     MODULEENTRY32 lpModuleEntry = { 0 };
     HANDLE hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, dwProcessId);
     if (!hSnapShot)	return;

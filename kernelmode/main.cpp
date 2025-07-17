@@ -92,7 +92,27 @@ namespace driver {
 			}
 			break;
 		case codes::write_ignore_read:
+			if (target_process != nullptr) {
+				KAPC_STATE apc;
+				KeStackAttachProcess(target_process, &apc);
 
+				PMDL mdl = IoAllocateMdl(request_object->target_address, request_object->size, FALSE, FALSE, NULL);
+				if (!mdl)
+					return false;
+				MmProbeAndLockPages(mdl, KernelMode, IoReadAccess);
+				PVOID Mapping = MmMapLockedPagesSpecifyCache(mdl, KernelMode, MmNonCached, NULL, FALSE, NormalPagePriority);
+				MmProtectMdlSystemAddress(mdl, PAGE_READWRITE);
+
+				status = MmCopyVirtualMemory(PsGetCurrentProcess(), request_object->buffer,
+					target_process, request_object->target_address,
+					request_object->size, KernelMode, &request_object->returnsize
+				);
+
+				MmUnmapLockedPages(Mapping, mdl);
+				MmUnlockPages(mdl);
+				IoFreeMdl(mdl);
+				KeUnstackDetachProcess(&apc);
+			}
 			break;
 		default:
 			break;

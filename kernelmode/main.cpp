@@ -1,4 +1,5 @@
 #include <ntifs.h>
+#include <intrin.h>
 extern "C" {
 	NTKERNELAPI NTSTATUS IoCreateDriver(PUNICODE_STRING DriverName,
 		PDRIVER_INITIALIZE InitializationFunction);
@@ -7,10 +8,76 @@ extern "C" {
 		PEPROCESS TargetProcess, PVOID TargetAddress,
 		SIZE_T BufferSize, KPROCESSOR_MODE PreviousMode,
 		PSIZE_T ReturnSize);
+
+
 }
+
+
+typedef NTSTATUS(*ZWPROTECTVM)(HANDLE, PVOID*, PSIZE_T, ULONG, PULONG);
+ZWPROTECTVM ZwProtectVirtualMemory = nullptr;
+
 
 void D_DbgPrint(PCSTR text) {
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, text));
+}
+
+NTSTATUS RemapMemoryRegion(PEPROCESS target_process, PVOID original_base, SIZE_T region_size)
+{
+	if (!target_process || !original_base || region_size == 0)
+		return STATUS_INVALID_PARAMETER;
+
+	KAPC_STATE apc;
+	KeStackAttachProcess(target_process, &apc);
+
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	PVOID new_base = nullptr;
+
+	__try
+	{
+		// 1. Backup the original data
+		void* backup = ExAllocatePool(NonPagedPool, region_size);
+		if (!backup)
+			__leave;
+
+		RtlCopyMemory(backup, original_base, region_size);
+
+		// 2. Unmap the original region
+		ZwUnmapViewOfSection((HANDLE)(-1), original_base);
+
+		// 3. Allocate new memory at same base
+		new_base = original_base;
+		status = ZwAllocateVirtualMemory((HANDLE)(-1), &new_base, 0, &region_size,
+			MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+		if (!NT_SUCCESS(status))
+			__leave;
+
+		// 4. Write the original content back
+		RtlCopyMemory(new_base, backup, region_size);
+
+		status = STATUS_SUCCESS;
+	}
+	__finally
+	{
+		KeUnstackDetachProcess(&apc);
+	}
+
+	return status;
+}
+
+void DisableWriteProtection()
+{
+	UINT64 cr0 = __readcr0();
+	cr0 &= ~(1ULL << 16); // Clear WP
+	__writecr0(cr0);
+	_disable(); // Disable interrupts (safety)
+}
+
+void EnableWriteProtection()
+{
+	UINT64 cr0 = __readcr0();
+	cr0 |= (1ULL << 16); // Set WP
+	__writecr0(cr0);
+	_enable(); // Re-enable interrupts
 }
 
 namespace driver {
@@ -32,6 +99,7 @@ namespace driver {
 		PVOID target_address;
 		PVOID buffer;
 
+		NTSTATUS status;
 		SIZE_T size;
 		SIZE_T returnsize;
 	};
@@ -78,9 +146,9 @@ namespace driver {
 		case codes::read:
 			if (target_process != nullptr) { // MmCopyVirtualmemomry requires 2 EPROCESS structures, the target PROCESS and the source PROCESS (kernel driver) to write memory to
 				status = MmCopyVirtualMemory(target_process, request_object->target_address,
-											 PsGetCurrentProcess(), request_object->buffer ,
-											 request_object->size, KernelMode, &request_object->returnsize
-										    );
+					PsGetCurrentProcess(), request_object->buffer,
+					request_object->size, KernelMode, &request_object->returnsize
+				);
 			}
 			break;
 		case codes::write:
@@ -92,32 +160,14 @@ namespace driver {
 			}
 			break;
 		case codes::write_ignore_read:
-			if (target_process != nullptr) {
-				KAPC_STATE apc;
-				KeStackAttachProcess(target_process, &apc);
-
-				PMDL mdl = IoAllocateMdl(request_object->target_address, request_object->size, FALSE, FALSE, NULL);
-				if (!mdl)
-					return false;
-				MmProbeAndLockPages(mdl, KernelMode, IoReadAccess);
-				PVOID Mapping = MmMapLockedPagesSpecifyCache(mdl, KernelMode, MmNonCached, NULL, FALSE, NormalPagePriority);
-				MmProtectMdlSystemAddress(mdl, PAGE_READWRITE);
-
-				status = MmCopyVirtualMemory(PsGetCurrentProcess(), request_object->buffer,
-					target_process, request_object->target_address,
-					request_object->size, KernelMode, &request_object->returnsize
-				);
-
-				MmUnmapLockedPages(Mapping, mdl);
-				MmUnlockPages(mdl);
-				IoFreeMdl(mdl);
-				KeUnstackDetachProcess(&apc);
-			}
+		{
 			break;
+		}
 		default:
 			break;
 		}
 
+		request_object->status = status;
 		irp->IoStatus.Status = status;
 		irp->IoStatus.Information = sizeof(Request);
 		IoCompleteRequest(irp, IO_NO_INCREMENT);

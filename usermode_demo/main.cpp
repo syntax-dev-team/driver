@@ -1,5 +1,5 @@
 ﻿/* DEMO FOR KERNEL DRIVER (INCLUDES CSGO BUNNY HOP)*/
-#define CSGO_CHEAT
+//#define CSGO_CHEAT
 
 
 #include<iostream>
@@ -10,7 +10,7 @@
 #include "csgo_offsets/offsets.hpp"
 #include "csgo_offsets/buttons.hpp"
 using namespace cs2_dumper;
-
+#define CSGO_CHEAT
 #ifdef CSGO_CHEAT
     #define PROCESSNAME L"cs2.exe"
 #else
@@ -88,6 +88,15 @@ namespace driver {
         // Use device io control
         DeviceIoControl(driver_handle, codes::write, &request, sizeof(request), &request, sizeof(request), nullptr, nullptr);
     }
+
+    void write_ignore_read(HANDLE driver_handle, uintptr_t target_address, LPVOID buffer, SIZE_T size) {
+        Request request;
+        request.target_address = (PVOID)target_address;
+        request.buffer = (PVOID)buffer;
+        request.size = size;
+        // Use device io control
+        DeviceIoControl(driver_handle, codes::write_ignore_read, &request, sizeof(request), &request, sizeof(request), nullptr, nullptr);
+    }
 }
 
 int main()
@@ -110,6 +119,7 @@ int main()
     }
     if (driver::attach_to_process(driver_handle, pid) == true) {
         printf("attached to process succcesfully\n");
+
 #ifdef CSGO_CHEAT
 
 
@@ -135,7 +145,6 @@ int main()
                 int random_ass_number = 65537;
                 int random_ass_number2 = 256;
                 if (space_pressed && in_air) {
-                    Sleep(10);
                     driver::write_memory(driver_handle, client + buttons::jump, &random_ass_number,sizeof(int));
                 }
                 else if (space_pressed && !in_air) {
@@ -154,6 +163,15 @@ int main()
         if (const uintptr_t client = get_module_base_address(pid, L"Notepad.exe"); client != 0) {
             UINT32 randombytes = 0;
             driver::write_memory(driver_handle, client + 0x129050, &randombytes, sizeof(UINT32));
+            std::cout << "randomm bytes read:" << randombytes << '\n';
+        }
+        uintptr_t OpenProcess = (uintptr_t)(GetProcAddress(GetModuleHandle("ntdll.dll"), "NtOpenProcess"));
+        
+        std::cout << "OpenProcess -> " << OpenProcess << '\n';
+
+        if (const uintptr_t client = get_module_base_address(pid, L"Notepad.exe"); client != 0) {
+            UINT32 randombytes = 0;
+            driver::write_ignore_read(driver_handle, OpenProcess, &randombytes, sizeof(UINT32));
             std::cout << "randomm bytes read:" << randombytes << '\n';
         }
 #endif

@@ -128,7 +128,7 @@ namespace driver {
 		//Access request object sent from usermode by accessing the buffer, associatedIrp.SystemBuffer and casting that into our request object;
 		auto request_object = reinterpret_cast<Request*>(irp->AssociatedIrp.SystemBuffer);
 		
-		if (stack_irp == nullptr && request_object == nullptr) {
+		if (stack_irp == nullptr || request_object == nullptr) {
 			IoCompleteRequest(irp, IO_NO_INCREMENT);
 			return status;
 		}
@@ -140,23 +140,37 @@ namespace driver {
 		switch (control_code)
 		{
 		case codes::attach:
+			if (target_process != nullptr) {
+				ObDereferenceObject(target_process);
+				target_process = nullptr;
+			}
 			status = PsLookupProcessByProcessId(request_object->process_id, &target_process);
 			break;
 
 		case codes::read:
-			if (target_process != nullptr) { // MmCopyVirtualmemomry requires 2 EPROCESS structures, the target PROCESS and the source PROCESS (kernel driver) to write memory to
-				status = MmCopyVirtualMemory(target_process, request_object->target_address,
-					PsGetCurrentProcess(), request_object->buffer,
-					request_object->size, KernelMode, &request_object->returnsize
-				);
+			__try {
+				if (target_process != nullptr) { // MmCopyVirtualmemomry requires 2 EPROCESS structures, the target PROCESS and the source PROCESS (kernel driver) to write memory to
+					status = MmCopyVirtualMemory(target_process, request_object->target_address,
+						PsGetCurrentProcess(), request_object->buffer,
+						request_object->size, KernelMode, &request_object->returnsize
+					);
+				}
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				status = GetExceptionCode();
 			}
 			break;
 		case codes::write:
-			if (target_process != nullptr) {
-				status = MmCopyVirtualMemory(PsGetCurrentProcess(), request_object->buffer,
-					target_process, request_object->target_address,
-					request_object->size, KernelMode, &request_object->returnsize
-				);
+			__try {
+				if (target_process != nullptr) {
+					status = MmCopyVirtualMemory(PsGetCurrentProcess(), request_object->buffer,
+						target_process, request_object->target_address,
+						request_object->size, KernelMode, &request_object->returnsize
+					);
+				}
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER) {
+				status = GetExceptionCode();
 			}
 			break;
 		case codes::write_ignore_read:
